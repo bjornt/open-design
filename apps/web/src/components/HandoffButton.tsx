@@ -434,12 +434,23 @@ export function HandoffButton({
 
   const available = editors.filter((e) => e.available);
   const unavailable = editors.filter((e) => !e.available);
+  const hasAvailableEditor = available.length > 0;
+  const fallbackId: HostEditorId =
+    platform === 'win32' ? 'explorer' : platform === 'linux' ? 'file-manager' : 'finder';
+  const fallbackLabel =
+    platform === 'win32' ? 'Explorer' : platform === 'linux' ? 'File Manager' : 'Finder';
+  const fallbackEditor = editors.find((editor) => editor.id === fallbackId) ?? {
+    id: fallbackId,
+    label: fallbackLabel,
+    icon: 'folder',
+    available: false,
+  };
   const preferred = readPreferred();
   const primary =
-    available.find((e) => e.id === preferred) ?? available[0] ?? null;
-  const primaryTitle = primary
+    available.find((e) => e.id === preferred) ?? available[0] ?? fallbackEditor;
+  const primaryTitle = hasAvailableEditor
     ? t('handoff.openInTarget', { target: primary.label })
-    : t('handoff.action');
+    : t('handoff.fallbackTitle', { target: fallbackLabel });
   const cliTargets = useMemo(() => mergeCliTargets(agents), [agents]);
   const availableCliTargets = cliTargets.filter((cli) => cli.available);
   const unavailableCliTargets = cliTargets.filter((cli) => !cli.available);
@@ -469,9 +480,12 @@ export function HandoffButton({
       setError(msg);
       setOpen(true);
       setActiveTab('editor');
-      // Fallback: if Finder is the user's pick and the daemon spawn
-      // failed, try the renderer-side reveal-in-finder bridge.
-      if (editor.id === 'finder' && onRequestRevealInFinder) {
+      // Platform file-manager fallbacks retain the renderer-side reveal bridge
+      // used by the former zero-editor solo button.
+      if (
+        (editor.id === 'finder' || editor.id === 'explorer' || editor.id === 'file-manager')
+        && onRequestRevealInFinder
+      ) {
         try {
           onRequestRevealInFinder();
         } catch {
@@ -581,63 +595,6 @@ export function HandoffButton({
     return null;
   }
 
-  // No available editors — render a Finder/Explorer/File-Manager single-button
-  // fallback so the surface is never blank, including the true zero-editor
-  // response where the daemon reports `editors: []`.
-  if (available.length === 0) {
-    const fallbackLabel = platform === 'win32' ? 'Explorer' : platform === 'linux' ? 'File Manager' : 'Finder';
-    const fallbackId: HostEditorId =
-      platform === 'win32' ? 'explorer' : platform === 'linux' ? 'file-manager' : 'finder';
-    // Wrap the solo button so a daemon spawn failure can surface an
-    // inline error next to it — without this, ProjectView's
-    // `<HandoffButton projectId={…} />` (no reveal callback) turns a
-    // rejected `openProjectInEditor` into a silent no-op.
-    return (
-      <div className="handoff-wrap handoff-wrap--solo" data-testid="handoff-wrap">
-        <button
-          type="button"
-          className="handoff-trigger handoff-trigger--solo od-tooltip"
-          title={t('handoff.fallbackTitle', { target: fallbackLabel })}
-          data-tooltip={t('handoff.fallbackTitle', { target: fallbackLabel })}
-          data-tooltip-placement="bottom"
-          disabled={busy === fallbackId}
-          onClick={() => {
-            // The fallback opens the project folder in the OS file manager.
-            // finder / explorer / file-manager are real entries in the daemon's
-            // open-in catalogue (open / explorer / xdg-open), so this performs a
-            // genuine reveal rather than a no-op; the renderer reveal bridge is a
-            // secondary fallback if the daemon spawn fails.
-            fireHandoff({
-              element: 'open_editor',
-              target_id: handoffTargetIdToTracking(fallbackId),
-              target_available: false,
-              handoff_tab: 'editor',
-            });
-            setError(null);
-            setBusy(fallbackId);
-            void openProjectInEditor(projectId, fallbackId, workspaceContext)
-              .catch((err) => {
-                setError(err instanceof Error ? err.message : String(err));
-                onRequestRevealInFinder?.();
-              })
-              .finally(() => setBusy(null));
-          }}
-        >
-          {busy === fallbackId ? (
-            <Icon name="spinner" size={20} />
-          ) : (
-            <EditorIcon editorId={fallbackId} size={20} />
-          )}
-          <span className="handoff-trigger-label">{fallbackLabel}</span>
-        </button>
-        {error ? (
-          <div className="handoff-menu-error" role="alert" data-testid="handoff-fallback-error">
-            {error}
-          </div>
-        ) : null}
-      </div>
-    );
-  }
 
   return (
     <div
@@ -653,7 +610,7 @@ export function HandoffButton({
       <div className="handoff-split">
         <button
           type="button"
-          className="handoff-trigger od-tooltip"
+          className={`handoff-trigger${hasAvailableEditor ? '' : ' handoff-trigger--fallback'} od-tooltip`}
           data-testid="handoff-trigger"
           title={primaryTitle}
           data-tooltip={primaryTitle}
@@ -687,8 +644,8 @@ export function HandoffButton({
               ) : (
                 <EditorIcon editorId={primary.id} size={20} />
               )}
-              <span className="handoff-trigger-label sr-only">
-                {primaryTitle}
+              <span className={`handoff-trigger-label${hasAvailableEditor ? ' sr-only' : ''}`}>
+                {hasAvailableEditor ? primaryTitle : fallbackLabel}
               </span>
             </>
           ) : (
@@ -707,6 +664,7 @@ export function HandoffButton({
           data-tooltip-placement="bottom"
           data-testid="handoff-caret"
           onClick={() => {
+            if (!hasAvailableEditor) setActiveTab('cli');
             fireHandoff({ element: 'caret' });
             setOpen((v) => !v);
           }}
@@ -917,7 +875,12 @@ export function HandoffButton({
           {error ? (
             <>
               <div className="handoff-menu-divider" />
-              <div className="handoff-menu-error">{error}</div>
+              <div
+                className="handoff-menu-error"
+                data-testid={hasAvailableEditor ? undefined : 'handoff-fallback-error'}
+              >
+                {error}
+              </div>
             </>
           ) : null}
         </div>

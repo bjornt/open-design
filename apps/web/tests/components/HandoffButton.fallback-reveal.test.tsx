@@ -35,6 +35,41 @@ afterEach(() => {
 });
 
 describe('HandoffButton zero-editors fallback', () => {
+  it('keeps CLI handoff available when the host reports no editors', async () => {
+    fetchHostEditors.mockResolvedValue({
+      platform: 'linux',
+      editors: [],
+    });
+    copyToClipboard.mockResolvedValue(true);
+
+    render(
+      <I18nProvider initial="en">
+        <HandoffButton
+          projectId="p1"
+          projectKind="prototype"
+          projectName="Headless project"
+          projectDir="/workspace/headless-project"
+          agents={[{
+            id: 'claude',
+            name: 'Claude Code',
+            bin: 'claude',
+            available: true,
+          }]}
+        />
+      </I18nProvider>,
+    );
+
+    fireEvent.click(await screen.findByTestId('handoff-caret'));
+
+    expect(screen.getByRole('tab', { name: 'Copy for CLI' }).getAttribute('aria-selected'))
+      .toBe('true');
+    fireEvent.click(screen.getByTestId('handoff-cli-item-claude'));
+
+    await waitFor(() => expect(copyToClipboard).toHaveBeenCalledTimes(1));
+    expect(copyToClipboard.mock.calls[0]?.[0]).toContain('/workspace/headless-project');
+    expect(openProjectInEditor).not.toHaveBeenCalled();
+  });
+
   it('opens the project folder in the OS file manager via the daemon', async () => {
     fetchHostEditors.mockResolvedValue({
       platform: 'darwin',

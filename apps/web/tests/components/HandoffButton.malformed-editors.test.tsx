@@ -109,10 +109,12 @@ describe('HandoffButton /api/editors response hardening', () => {
 
     renderHandoff();
 
-    // No entry counts as available, so the file-manager fallback owns the
-    // surface and a truthy-but-wrong flag never becomes a launch target.
-    expect(await screen.findByText('Finder')).toBeTruthy();
-    expect(screen.queryByTestId('handoff-trigger')).toBeNull();
+    // No entry counts as available, so the file-manager fallback remains the
+    // primary action while the handoff caret stays available. A truthy-but-wrong
+    // flag never makes Cursor a launch target.
+    const trigger = await screen.findByTestId('handoff-trigger');
+    expect(trigger.getAttribute('title')).toContain('Finder');
+    expect(screen.getByTestId('handoff-caret')).toBeTruthy();
     expect(screen.queryByText('Cursor')).toBeNull();
   });
 

@@ -3088,6 +3088,13 @@
   opacity: 0.6;
   cursor: not-allowed;
 }
+/* Headless hosts keep the platform file-manager fallback as the labeled
+   primary action while the adjacent caret exposes clipboard/CLI handoff. */
+.app .handoff-trigger--fallback {
+  width: auto;
+  gap: 8px;
+  padding: 0 8px 0 4px;
+}
 .app .handoff-trigger--solo {
   display: inline-flex;
   align-items: center;
